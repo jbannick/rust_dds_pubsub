@@ -1,3 +1,52 @@
+use std::{io, time};
+
+use log4rs::{
+  append::console::ConsoleAppender,
+  config::{Appender, Root},
+  Config,
+};
+use log::LevelFilter;
+use log::{debug, error, info, trace, warn};
+
+#[derive(Debug)]
+struct Structure(i32);
+  
+#[derive(Debug)]
+struct Deep(Structure);
+  
 fn main() {
-  println!("Rust DDS PubSub");
+  println!("== Starting Rust DDS PubSub");
+  
+  configure_logging();
+  
+  println!("Structure: {:?}", Structure(3));
+  
+  info!("Deep: {:?}", Deep(Structure(0)));
+  debug!("Deep: {:?}", Deep(Structure(7)));
+  trace!("Deep: {:?}", Deep(Structure(77)));
+  warn!("Deep: {:?}", Deep(Structure(999)));    
+  error!("Deep: {:?}", Deep(Structure(666)));
+}
+
+fn configure_logging() {
+  debug!("Enter: configure_logging");
+  
+  log4rs::init_file(
+    "logging-config.yaml",
+    log4rs::config::Deserializers::default(),
+  )
+  .unwrap_or_else(|e| {
+    match e.downcast_ref::<io::Error>() {
+      Some(os_err) if os_err.kind() == io::ErrorKind::NotFound => {
+        println!("No logging-config.yaml file found.");
+        let stdout = ConsoleAppender::builder().build();
+        let conf = Config::builder()
+          .appender(Appender::builder().build("stdout", Box::new(stdout)))
+          .build(Root::builder().appender("stdout").build(LevelFilter::Error))
+          .unwrap();
+        log4rs::init_config(conf).unwrap();
+      }
+      other_error => panic!("Logging config problem {other_error:?}"),
+    }
+  });
 }
