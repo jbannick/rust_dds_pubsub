@@ -1,4 +1,5 @@
 use std::{io, time};
+use std::env;
 
 use log4rs::{
   append::console::ConsoleAppender,
@@ -14,8 +15,39 @@ struct Structure(i32);
 #[derive(Debug)]
 struct Deep(Structure);
   
+fn help() {
+  println!("Usage: cargo run --example rust_dds_pubsub: [Sub or Pub]");
+  println!("Required: Server Type: [Sub or Pub]");
+}  
+
 fn main() {
   println!("== Starting Rust DDS PubSub");
+  let args: Vec<String> = env::args().collect();
+  
+  println!("args {:?}", args);
+  
+  match args.len() {
+    2 => { // one argument
+      let argval = &args[1];
+      match argval.as_str() {
+        "Sub" => {
+          println!("Server is Subscriber");
+        },
+        "Pub" => {
+        println!("Server is Publisher");
+        },
+        _ => {
+        println!("***ERROR: Invalid argument {:?}", argval);
+        help();
+        return;
+        }
+      }
+    }
+    _ => {
+      help();
+      return;
+      }
+  }
   
   configure_logging();
   
@@ -27,6 +59,7 @@ fn main() {
   warn!("Deep: {:?}", Deep(Structure(999)));    
   error!("Deep: {:?}", Deep(Structure(666)));
 }
+
 
 fn configure_logging() {
   debug!("Enter: configure_logging");
