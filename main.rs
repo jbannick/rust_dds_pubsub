@@ -103,7 +103,9 @@ fn main() {
   
   #[derive(Serialize, Deserialize, Debug)]
   struct SomeType {
-    a: i32
+    a: i32,
+    b: i32,
+    c: i32,
   }
   
   // ---
@@ -127,7 +129,7 @@ fn main() {
         futures::select! {
           r=datareader_stream.select_next_some()=>{
             match r{
-              Ok(d)=>{println!("{}",d.a)},
+              Ok(d)=>{println!("{} {} {}",d.a, d.b, d.c)},
               Err(e)=> {
                 println!("{:?}", e);
                 break;
@@ -162,7 +164,11 @@ fn main() {
       loop {
         futures::select! {
           _= tick_stream.select_next_some()=>{
-            let some_data = SomeType { a: i };
+            let some_data = SomeType { 
+            a: i ,
+            b: i * 10,
+            c: i * 100,
+            };
             i += 1;
             writer.async_write(some_data,None).await.unwrap_or_else(|e| println!("DataWriter write failed: {e:?}"));
             println!("Sent message");
