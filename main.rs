@@ -1,5 +1,6 @@
 use std::{io, time};
 use std::env;
+use std::fmt;
 
 use rustdds::*;
 use rustdds::no_key::{DataReader, DataWriter, DataSample}; // We use a NO_KEY topic here
@@ -16,54 +17,67 @@ use smol::Timer;
 
 use log::{debug, error, info, trace, warn};
 
+use structopt::StructOpt;
+use strum::VariantNames;
+
+const SECOND: time::Duration = time::Duration::from_millis(1000);
+
 #[derive(Debug)]
 struct Structure(i32);
   
-#[derive(Debug)]
-struct Deep(Structure);
-  
-fn help() {
-  println!("Usage: cargo run --example rust_dds_pubsub: [Sub or Pub]");
-  println!("Required: Server Type: [Sub or Pub]");
-}  
+// #[derive(Debug)]
+// struct Deep(Structure);
+//   
+// #[derive(Debug, StructOpt)]
+// struct Args {
+//     #[structopt(long, possible_values = Enumerated::VARIANTS)]
+//     enumerated: Enumerated,
+// } 
+
+#[derive(Debug, StructOpt)]
+struct Args {
+    #[structopt(long, possible_values = Enumerated::VARIANTS)]
+    enumerated: Enumerated,
+}
+
+#[derive(Debug, strum::EnumString, strum::EnumVariantNames)]
+#[strum(serialize_all = "kebab-case")]
+enum Enumerated {
+    Pub,
+    Sub,
+}
+
+
+impl fmt::Display for Enumerated {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Enumerated::Pub => write!(f, "pub"),
+            Enumerated::Sub => write!(f, "sub"),
+        }
+    }
+}
 
 fn main() {
   println!("== Starting Rust DDS PubSub");
-  let args: Vec<String> = env::args().collect();
-  
-  println!("args {:?}", args);
-  
-  match args.len() {
-    2 => { // one argument
-      let argval = &args[1];
-      match argval.as_str() {
-        "Sub" => {
-          // println!("Server is Subscriber");
-        },
-        "Pub" => {
-          // println!("Server is Publisher");
-        },
-        _ => {
-        println!("***ERROR: Invalid argument {:?}", argval);
-        help();
-        return;
-        }
-      }
-    }
-    _ => {
-      help();
-      return;
-      }
-  }
   
   configure_logging();
   
-  println!("Structure: {:?}", Structure(3));
-  info!("Deep: {:?}", Deep(Structure(0)));
-  debug!("Deep: {:?}", Deep(Structure(7)));
-  trace!("Deep: {:?}", Deep(Structure(77)));
-  warn!("Deep: {:?}", Deep(Structure(999)));    
-  error!("Deep: {:?}", Deep(Structure(666)));
+  let args = Args::from_args();
+  debug!("{:?}", args);
+  debug!("{:?}", args.enumerated);
+    
+  let arg = args.enumerated;
+  debug!("{:?}", arg);
+    
+  let pub_or_sub = arg.to_string();   
+  info!("pub_or_sub = {:?}", pub_or_sub);
+  
+//   println!("Structure: {:?}", Structure(3));
+//   info!("Deep: {:?}", Deep(Structure(0)));
+//   debug!("Deep: {:?}", Deep(Structure(7)));
+//   trace!("Deep: {:?}", Deep(Structure(77)));
+//   warn!("Deep: {:?}", Deep(Structure(999)));    
+//   error!("Deep: {:?}", Deep(Structure(666)));
 
   // Create a DDS DomainParticipant
   let domain_participant = DomainParticipant::new(0).unwrap();
@@ -92,36 +106,80 @@ fn main() {
     a: i32
   }
   
-  let mut reader = subscriber
+  // ---
+   
+  if "sub" == pub_or_sub {
+  
+    let mut reader = subscriber
     .create_datareader_no_key::<SomeType, CDRDeserializerAdapter<SomeType>>(
       &some_topic,
       None)
     .unwrap();
   info!("Created the DDS DataReader");
   
-  let mut writer = publisher
+    info!("-- Start Subscriber message listening --");
+    
+    smol::block_on(async {
+      let mut datareader_stream = reader.async_sample_stream();
+      let mut datareader_event_stream = datareader_stream.async_event_stream();
+
+      loop {
+        futures::select! {
+          r=datareader_stream.select_next_some()=>{
+            match r{
+              Ok(d)=>{println!("{}",d.a)},
+              Err(e)=> {
+                println!("{:?}", e);
+                break;
+              }
+            }
+          }
+          e=datareader_event_stream.select_next_some()=>{
+            println!("DataReader event: {e:?}");
+          }
+        }
+      }
+    })    
+    
+  } else if "pub" == pub_or_sub {
+  
+    let mut writer = publisher
     .create_datawriter_no_key::<SomeType, CDRSerializerAdapter<SomeType>> (
       &some_topic,
       None)
     .unwrap();
   info!("Created the DDS DataWriter");
   
-  // ---
-  
-  let pub_or_sub = "Sub";
-  
-  info!("pub_or_sub = {:?}", pub_or_sub);
-  if "Sub" == pub_or_sub {
-    println!("Server is Subscriber");
-  } else if "Pub" == pub_or_sub {
-    println!("Server is Publisher");
+    info!("-- Start Publisher message sending --");
+    
+    smol::block_on(async {
+      let mut tick_stream = futures::StreamExt::fuse(Timer::interval(SECOND));
+
+      let mut datawriter_event_stream = writer.as_async_status_stream();
+
+      let mut i = 0;
+
+      loop {
+        futures::select! {
+          _= tick_stream.select_next_some()=>{
+            let some_data = SomeType { a: i };
+            i += 1;
+            writer.async_write(some_data,None).await.unwrap_or_else(|e| println!("DataWriter write failed: {e:?}"));
+            println!("Sent message");
+          }
+          e= datawriter_event_stream.select_next_some()=>{
+            println!("DataWriter event: {e:?}");
+          }
+        }
+      }
+    })
+
   } else {
     error!("Invalid argument: {:?}", pub_or_sub);
     return;
   }
   
 }
-
 
 fn configure_logging() {
   println!("Enter: configure_logging");
