@@ -1,9 +1,7 @@
 use std::{io, time};
-use std::env;
 use std::fmt;
 
 use rustdds::*;
-use rustdds::no_key::{DataReader, DataWriter, DataSample}; // We use a NO_KEY topic here
 use serde::{Serialize, Deserialize};
 
 use log4rs::{
@@ -21,7 +19,6 @@ use structopt::StructOpt;
 use strum::VariantNames;
 
 use std::iter::successors;
-use std::option;
 
 const SECOND: time::Duration = time::Duration::from_millis(1000);
 
@@ -75,23 +72,23 @@ const ORDERS: [&str; 7] = [
 
 #[derive(Debug, StructOpt)]
 struct Args {
-    #[structopt(long, possible_values = Enumerated::VARIANTS)]
-    enumerated: Enumerated,
+    #[structopt(long, possible_values = ServerType::VARIANTS)]
+    servertype: ServerType,
 }
 
 #[derive(Debug, strum::EnumString, strum::EnumVariantNames)]
 #[strum(serialize_all = "kebab-case")]
-enum Enumerated {
+enum ServerType {
     Pub,
     Sub,
 }
 
 
-impl fmt::Display for Enumerated {
+impl fmt::Display for ServerType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Enumerated::Pub => write!(f, "pub"),
-            Enumerated::Sub => write!(f, "sub"),
+            ServerType::Pub => write!(f, "pub"),
+            ServerType::Sub => write!(f, "sub"),
         }
     }
 }
@@ -103,13 +100,13 @@ fn main() {
   
   let args = Args::from_args();
   debug!("{:?}", args);
-  debug!("{:?}", args.enumerated);
+  debug!("{:?}", args.servertype);
     
-  let arg = args.enumerated;
+  let arg = args.servertype;
   debug!("{:?}", arg);
     
-  let pub_or_sub = arg.to_string();   
-  info!("pub_or_sub = {:?}", pub_or_sub);
+  let server_type = arg.to_string();   
+  info!("server_type = {:?}", server_type);
   
 //   println!("Structure: {:?}", Structure(3));
 //   info!("Deep: {:?}", Deep(Structure(0)));
@@ -149,9 +146,9 @@ fn main() {
   
   // ---
    
-  if "sub" == pub_or_sub {
+  if "sub" == server_type {
   
-    let mut reader = subscriber
+    let reader = subscriber
     .create_datareader_no_key::<SomeType, CDRDeserializerAdapter<SomeType>>(
       &some_topic,
       None)
@@ -182,9 +179,9 @@ fn main() {
       }
     })    
     
-  } else if "pub" == pub_or_sub {
+  } else if "pub" == server_type {
   
-    let mut writer = publisher
+    let  writer = publisher
     .create_datawriter_no_key::<SomeType, CDRSerializerAdapter<SomeType>> (
       &some_topic,
       None)
@@ -222,7 +219,7 @@ fn main() {
     })
 
   } else {
-    error!("Invalid argument: {:?}", pub_or_sub);
+    error!("Invalid argument: {:?}", server_type);
     return;
   }
   
