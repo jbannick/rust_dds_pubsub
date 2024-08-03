@@ -20,11 +20,50 @@ use log::{debug, error, info, trace, warn};
 use structopt::StructOpt;
 use strum::VariantNames;
 
+use std::iter::successors;
+use std::option;
+
 const SECOND: time::Duration = time::Duration::from_millis(1000);
 
-#[derive(Debug)]
-struct Structure(i32);
-  
+const ONES: [&str; 20] = [
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+];
+const TENS: [&str; 10] = [
+    "zero", "ten", "twenty", "thirty", "forty", "fifty", "sixty",
+    "seventy", "eighty", "ninety",
+];
+const ORDERS: [&str; 7] = [
+    "zero",
+    "thousand",
+    "million",
+    "billion",
+    "trillion",
+    "quadrillion",
+    "quintillion", // enough for u64::MAX
+];
+
+// #[derive(Debug)]
+// struct Structure(i32);
+//   
 // #[derive(Debug)]
 // struct Deep(Structure);
 //   
@@ -104,8 +143,8 @@ fn main() {
   #[derive(Serialize, Deserialize, Debug)]
   struct SomeType {
     a: i32,
-    b: i32,
-    c: i32,
+    b: u32,
+    c: String,
   }
   
   // ---
@@ -159,19 +198,21 @@ fn main() {
 
       let mut datawriter_event_stream = writer.as_async_status_stream();
 
-      let mut i = 0;
-
+      let mut i_i32 = 0;
+      let mut i_u32: u32 = 0;
+      
       loop {
         futures::select! {
           _= tick_stream.select_next_some()=>{
             let some_data = SomeType { 
-            a: i ,
-            b: i * 10,
-            c: i * 100,
+            a: i_i32 ,
+            b: i_u32 * 10,
+            c: encode(i_u32.try_into().unwrap()), //i.to_string(),
             };
-            i += 1;
+            i_i32 += 1;
+            i_u32 += 1;
             writer.async_write(some_data,None).await.unwrap_or_else(|e| println!("DataWriter write failed: {e:?}"));
-            println!("Sent message");
+            println!("Sent message {}", i_i32 -1);
           }
           e= datawriter_event_stream.select_next_some()=>{
             println!("DataWriter event: {e:?}");
@@ -208,4 +249,37 @@ fn configure_logging() {
       other_error => panic!("Logging config problem {other_error:?}"),
     }
   });
+}
+
+// See: https://stackoverflow.com/questions/61603849/how-to-transform-a-rust-number-into-english-words-like-1-one
+pub fn encode(num: u32) -> String {
+    match num {
+        0..=19 => ONES[num as usize].to_string(),
+        20..=99 => {
+            let upper = (num / 10) as usize;
+            match num % 10 {
+                0 => TENS[upper].to_string(),
+                lower => format!("{}-{}", TENS[upper], encode(lower)),
+            }
+        }
+        100..=999 => format_num(num, 100, "hundred"),
+        _ => {
+            let (div, order) =
+                successors(Some(1u32), |v| v.checked_mul(1000))
+                    .zip(ORDERS.iter())
+                    .find(|&(e, _)| e > num / 1000)
+                    .unwrap();
+
+            format_num(num, div, order)
+        }
+    }
+}
+
+fn format_num(num: u32, div: u32, order: &str) -> String {
+    match (num / div, num % div) {
+        (upper, 0) => format!("{} {}", encode(upper), order),
+        (upper, lower) => {
+            format!("{} {} {}", encode(upper), order, encode(lower))
+        }
+    }
 }
